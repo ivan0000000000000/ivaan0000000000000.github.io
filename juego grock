@@ -1,0 +1,223 @@
+import pygame
+import random
+import sys
+
+# Inicializar Pygame
+pygame.init()
+
+# Configuración de pantalla
+ANCHO = 800
+ALTO = 600
+pantalla = pygame.display.set_mode((ANCHO, ALTO))
+pygame.display.set_caption("Carrera Esquiva - Top Down")
+reloj = pygame.time.Clock()
+fuente = pygame.font.SysFont("Arial", 36)
+fuente_gameover = pygame.font.SysFont("Arial", 72)
+
+# Colores
+NEGRO = (0, 0, 0)
+BLANCO = (255, 255, 255)
+GRIS = (50, 50, 50)
+VERDE = (0, 200, 0)
+AMARILLO = (255, 220, 0)
+ROJO = (200, 0, 0)
+
+# Parámetros del juego
+NUM_CARRILES = 4
+ANCHO_CARril = ANCHO // (NUM_CARRILES + 2)  # márgenes a los lados
+posiciones_carril = [ANCHO//2 - 1.5*ANCHO_CARril + i*ANCHO_CARril for i in range(NUM_CARRILES)]
+
+# Jugador
+class CocheJugador:
+    def __init__(self):
+        self.ancho = 50
+        self.alto = 80
+        self.x = posiciones_carril[1]
+        self.y = ALTO - 120
+        self.vel = 0
+        self.carril = 1
+        self.color = (0, 100, 255)
+    
+    def mover(self, direccion):
+        if direccion == "izquierda" and self.carril > 0:
+            self.carril -= 1
+        elif direccion == "derecha" and self.carril < NUM_CARRILES-1:
+            self.carril += 1
+        self.x = posiciones_carril[self.carril]
+    
+    def dibujar(self):
+        pygame.draw.rect(pantalla, self.color, (self.x, self.y, self.ancho, self.alto))
+        # Detalles del coche
+        pygame.draw.rect(pantalla, BLANCO, (self.x + 10, self.y + 15, self.ancho - 20, 20))  # parabrisas
+
+# Obstáculo
+class Obstaculo:
+    def __init__(self, y):
+        self.carril = random.randint(0, NUM_CARRILES-1)
+        self.x = posiciones_carril[self.carril]
+        self.vel = 8
+        self.tipo = random.choice(["coche", "moto", "camion"])
+        
+        if self.tipo == "coche":
+            self.ancho = 50
+            self.alto = 90
+            self.color = (random.randint(150,255), random.randint(0,100), random.randint(0,100))
+        elif self.tipo == "moto":
+            self.ancho = 25
+            self.alto = 60
+            self.color = (100, 100, 100)
+        else:  # camión
+            self.ancho = 65
+            self.alto = 120
+            self.color = (80, 80, 80)
+        
+        self.y = y
+    
+    def actualizar(self):
+        self.y += self.vel
+    
+    def dibujar(self):
+        pygame.draw.rect(pantalla, self.color, (self.x, self.y, self.ancho, self.alto))
+        if self.tipo == "moto":
+            pygame.draw.circle(pantalla, NEGRO, (self.x + self.ancho//2, self.y + 10), 8)
+
+# Moneda
+class Moneda:
+    def __init__(self, y):
+        self.carril = random.randint(0, NUM_CARRILES-1)
+        self.x = posiciones_carril[self.carril] + 20
+        self.y = y
+        self.radio = 12
+        self.vel = 8
+    
+    def actualizar(self):
+        self.y += self.vel
+    
+    def dibujar(self):
+        pygame.draw.circle(pantalla, AMARILLO, (int(self.x), int(self.y)), self.radio)
+        pygame.draw.circle(pantalla, BLANCO, (int(self.x), int(self.y)), self.radio-4)
+
+def dibujar_carretera():
+    # Asfalto
+    pygame.draw.rect(pantalla, GRIS, (ANCHO//6, 0, ANCHO*2//3, ALTO))
+    
+    # Bordes
+    pygame.draw.rect(pantalla, VERDE, (ANCHO//6 - 30, 0, 30, ALTO))
+    pygame.draw.rect(pantalla, VERDE, (ANCHO*5//6, 0, 30, ALTO))
+    
+    # Líneas de carril
+    ancho_carril = (ANCHO*2//3) // NUM_CARRILES
+    for i in range(1, NUM_CARRILES):
+        x = ANCHO//6 + i * ancho_carril
+        pygame.draw.line(pantalla, BLANCO, (x, 0), (x, ALTO), 5)
+
+# Variables del juego
+def reiniciar_juego():
+    global jugador, obstaculos, monedas, puntuacion, velocidad_base, game_over
+    jugador = CocheJugador()
+    obstaculos = []
+    monedas = []
+    puntuacion = 0
+    velocidad_base = 8
+    game_over = False
+
+reiniciar_juego()
+tiempo = 0
+ultimo_spawn = 0
+ultimo_spawn_moneda = 0
+
+# Bucle principal
+corriendo = True
+while corriendo:
+    dt = reloj.tick(60)
+    tiempo += dt
+    
+    for evento in pygame.event.get():
+        if evento.type == pygame.QUIT:
+            corriendo = False
+        
+        if evento.type == pygame.KEYDOWN:
+            if not game_over:
+                if evento.key == pygame.K_LEFT or evento.key == pygame.K_a:
+                    jugador.mover("izquierda")
+                if evento.key == pygame.K_RIGHT or evento.key == pygame.K_d:
+                    jugador.mover("derecha")
+            else:
+                if evento.key == pygame.K_RETURN:
+                    reiniciar_juego()
+    
+    if not game_over:
+        # Aumentar dificultad
+        velocidad_base = 8 + (tiempo / 10000)  # se acelera con el tiempo
+        
+        # Spawn de obstáculos
+        if tiempo - ultimo_spawn > 800:  # cada ~0.8s
+            obstaculos.append(Obstaculo(-150))
+            ultimo_spawn = tiempo
+        
+        # Spawn de monedas (menos frecuentes)
+        if tiempo - ultimo_spawn_moneda > 1200:
+            if random.random() < 0.7:
+                monedas.append(Moneda(-50))
+            ultimo_spawn_moneda = tiempo
+        
+        # Actualizar obstáculos
+        for obs in obstaculos[:]:
+            obs.vel = velocidad_base
+            obs.actualizar()
+            if obs.y > ALTO + 50:
+                obstaculos.remove(obs)
+        
+        # Actualizar monedas
+        for mon in monedas[:]:
+            mon.vel = velocidad_base
+            mon.actualizar()
+            if mon.y > ALTO + 50:
+                monedas.remove(mon)
+        
+        # Colisiones con obstáculos
+        jugador_rect = pygame.Rect(jugador.x, jugador.y, jugador.ancho, jugador.alto)
+        for obs in obstaculos:
+            obs_rect = pygame.Rect(obs.x, obs.y, obs.ancho, obs.alto)
+            if jugador_rect.colliderect(obs_rect):
+                game_over = True
+        
+        # Colisiones con monedas
+        for mon in monedas[:]:
+            if jugador_rect.collidepoint(mon.x, mon.y):
+                puntuacion += 1
+                monedas.remove(mon)
+    
+    # Dibujar
+    pantalla.fill(NEGRO)
+    dibujar_carretera()
+    
+    # Dibujar objetos
+    for obs in obstaculos:
+        obs.dibujar()
+    for mon in monedas:
+        mon.dibujar()
+    
+    jugador.dibujar()
+    
+    # HUD
+    texto_puntos = fuente.render(f"{puntuacion}", True, BLANCO)
+    pantalla.blit(texto_puntos, (ANCHO - 80, 20))
+    
+    if game_over:
+        # Pantalla negra con Game Over
+        overlay = pygame.Surface((ANCHO, ALTO))
+        overlay.set_alpha(180)
+        overlay.fill(NEGRO)
+        pantalla.blit(overlay, (0, 0))
+        
+        go_texto = fuente_gameover.render("GAME OVER", True, ROJO)
+        pantalla.blit(go_texto, (ANCHO//2 - go_texto.get_width()//2, ALTO//2 - 100))
+        
+        restart_texto = fuente.render("Presiona ENTER para volver a jugar", True, BLANCO)
+        pantalla.blit(restart_texto, (ANCHO//2 - restart_texto.get_width()//2, ALTO//2 + 20))
+    
+    pygame.display.flip()
+
+pygame.quit()
+sys.exit()
